@@ -1,0 +1,45 @@
+.sample-prompts {
+  margin-top: 1rem;
+}
+
+.sample-label {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+}
+
+.sample-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.sample-chip {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 0.4rem 0.75rem;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  font-family: inherit;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sample-chip:hover {
+  border-color: var(--primary);
+  color: var(--text);
+  background: rgba(108, 92, 231, 0.1);
+}
+
+@media (max-width: 600px) {
+  .sample-chip {
+    white-space: normal;
+  }
+}
