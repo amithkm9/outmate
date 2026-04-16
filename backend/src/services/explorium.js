@@ -8,25 +8,50 @@ const MAX_RESULTS = 3;
 // ═══════════════════════════════════════════════════════════════════════════
 
 const COUNTRY_CODE_MAP = {
-  "united states": "us", "usa": "us", "us": "us",
-  "united kingdom": "gb", "uk": "gb", "england": "gb",
+  "united states": "us", "usa": "us", "us": "us", "america": "us",
+  "united kingdom": "gb", "uk": "gb", "england": "gb", "britain": "gb", "great britain": "gb",
   "canada": "ca", "germany": "de", "france": "fr",
   "india": "in", "australia": "au", "japan": "jp",
   "china": "cn", "brazil": "br", "mexico": "mx",
-  "spain": "es", "italy": "it", "netherlands": "nl",
+  "spain": "es", "italy": "it", "netherlands": "nl", "holland": "nl",
   "sweden": "se", "switzerland": "ch", "singapore": "sg",
-  "israel": "il", "south korea": "kr", "ireland": "ie",
+  "israel": "il", "south korea": "kr", "korea": "kr", "ireland": "ie",
   "norway": "no", "denmark": "dk", "finland": "fi",
   "portugal": "pt", "belgium": "be", "austria": "at",
   "poland": "pl", "new zealand": "nz", "south africa": "za",
   "uae": "ae", "united arab emirates": "ae",
+  // Southeast Asia
+  "thailand": "th", "vietnam": "vn", "indonesia": "id",
+  "philippines": "ph", "malaysia": "my", "myanmar": "mm", "cambodia": "kh",
+  // Latin America
+  "argentina": "ar", "colombia": "co", "chile": "cl", "peru": "pe",
+  "venezuela": "ve", "ecuador": "ec", "uruguay": "uy",
+  // More Europe
+  "czech republic": "cz", "czechia": "cz", "romania": "ro", "hungary": "hu",
+  "greece": "gr", "croatia": "hr", "ukraine": "ua", "turkey": "tr",
+  "luxembourg": "lu", "estonia": "ee", "latvia": "lv", "lithuania": "lt",
+  // Middle East & Africa
+  "saudi arabia": "sa", "qatar": "qa", "bahrain": "bh", "kuwait": "kw",
+  "oman": "om", "egypt": "eg", "nigeria": "ng", "kenya": "ke", "ghana": "gh",
+  // Asia
+  "taiwan": "tw", "hong kong": "hk", "bangladesh": "bd", "pakistan": "pk",
+  "sri lanka": "lk",
 };
 
 const REGION_COUNTRY_CODES = {
-  "europe": ["gb", "de", "fr", "es", "it", "nl", "se", "ch", "ie", "no", "dk", "fi", "pt", "be", "at", "pl"],
+  "europe": ["gb", "de", "fr", "es", "it", "nl", "se", "ch", "ie", "no", "dk", "fi", "pt", "be", "at", "pl", "cz", "ro", "hu", "gr", "hr", "lu", "ee", "lv", "lt"],
   "north america": ["us", "ca", "mx"],
-  "asia": ["in", "jp", "cn", "sg", "kr"],
-  "middle east": ["ae", "il"],
+  "asia": ["in", "jp", "cn", "sg", "kr", "tw", "hk", "bd", "pk", "lk"],
+  "asia pacific": ["in", "jp", "cn", "sg", "kr", "au", "nz", "tw", "hk", "th", "vn", "id", "ph", "my"],
+  "southeast asia": ["th", "vn", "id", "ph", "my", "sg", "mm", "kh"],
+  "sea": ["th", "vn", "id", "ph", "my", "sg", "mm", "kh"],
+  "middle east": ["ae", "il", "sa", "qa", "bh", "kw", "om"],
+  "mena": ["ae", "il", "sa", "qa", "bh", "kw", "om", "eg"],
+  "latin america": ["br", "mx", "ar", "co", "cl", "pe", "ve", "ec", "uy"],
+  "latam": ["br", "mx", "ar", "co", "cl", "pe", "ve", "ec", "uy"],
+  "nordics": ["se", "no", "dk", "fi"],
+  "africa": ["za", "ng", "ke", "gh", "eg"],
+  "south asia": ["in", "bd", "pk", "lk"],
 };
 
 // Explorium's valid company_size enum values and their numeric boundaries
@@ -97,8 +122,13 @@ function buildCompanyPayload(filters) {
   if (countryCodes.length) f.country_code = { values: countryCodes };
 
   if (filters.employee_count_min != null || filters.employee_count_max != null) {
-    const sizes = findOverlappingRanges(EMPLOYEE_RANGES, filters.employee_count_min, filters.employee_count_max);
-    if (sizes.length) f.company_size = { values: sizes };
+    // Handle "0 employees" / "no employees" — map to smallest range
+    if (filters.employee_count_max === 0) {
+      f.company_size = { values: ["1-10"] };
+    } else {
+      const sizes = findOverlappingRanges(EMPLOYEE_RANGES, filters.employee_count_min, filters.employee_count_max);
+      if (sizes.length) f.company_size = { values: sizes };
+    }
   }
 
   if (filters.revenue_min != null || filters.revenue_max != null) {
@@ -110,25 +140,54 @@ function buildCompanyPayload(filters) {
     f.linkedin_category = { values: filters.industry.map((i) => i.toLowerCase()) };
   }
 
-  // website_keywords searches actual site content — skip vague/qualitative terms
-  // that describe trends rather than what a website would literally contain
-  if (filters.keywords?.length) {
-    const VAGUE_PATTERNS = /\b(increasing|growing|fast-growing|high growth|trending|top|best|leading)\b/i;
-    const usable = filters.keywords.filter((k) => !VAGUE_PATTERNS.test(k));
-    if (usable.length) {
-      f.website_keywords = { values: usable, operator: "OR" };
-    }
-  }
-
-  // Only pass actual tech stack names (e.g. "React", "AWS"), not industry terms
-  // that Gemini sometimes misclassifies as technologies
+  // Separate real tech stack items from industry buzzwords that Gemini misclassifies
   const INDUSTRY_TERMS = new Set([
     "cybersecurity", "fintech", "saas", "ai", "machine learning",
-    "blockchain", "iot", "cloud", "devops", "data science",
+    "artificial intelligence", "blockchain", "iot", "cloud", "devops",
+    "data science", "edtech", "cleantech", "climate tech", "proptech",
+    "insurtech", "legaltech", "hr tech", "food tech", "fashion tech",
+    "e-commerce", "ecommerce", "deep learning", "nlp", "computer vision",
   ]);
+  const misplacedKeywords = [];
   if (filters.technologies?.length) {
-    const realTech = filters.technologies.filter((t) => !INDUSTRY_TERMS.has(t.toLowerCase()));
+    const realTech = [];
+    for (const t of filters.technologies) {
+      if (INDUSTRY_TERMS.has(t.toLowerCase())) {
+        misplacedKeywords.push(t); // rescue into keywords
+      } else {
+        realTech.push(t);
+      }
+    }
     if (realTech.length) f.company_tech_stack_tech = { values: realTech };
+  }
+
+  // Collect all keyword sources into a single pool
+  const allKeywords = [];
+
+  if (filters.keywords?.length) {
+    allKeywords.push(...filters.keywords);
+  }
+
+  // Rescued industry terms from technologies → keywords
+  if (misplacedKeywords.length) {
+    allKeywords.push(...misplacedKeywords);
+  }
+
+  // company_name_keywords → use as website keywords (Explorium doesn't have a name filter)
+  if (filters.company_name_keywords?.length) {
+    allKeywords.push(...filters.company_name_keywords);
+  }
+
+  // founded_year_min/max → Explorium has no direct filter, but we can add as keyword signal
+  if (filters.founded_year_min) {
+    allKeywords.push(`founded ${filters.founded_year_min}`);
+  }
+
+  // Filter out vague/qualitative terms that don't match website content
+  const VAGUE_PATTERNS = /^(increasing|growing|fast-growing|high growth|trending|top|best|leading|established|emerging)$/i;
+  const usableKeywords = allKeywords.filter((k) => !VAGUE_PATTERNS.test(k.trim()));
+  if (usableKeywords.length) {
+    f.website_keywords = { values: usableKeywords, operator: "OR" };
   }
 
   return { mode: "full", size: MAX_RESULTS, page_size: MAX_RESULTS, page: 1, filters: f };
@@ -149,8 +208,12 @@ function buildProspectPayload(filters) {
   if (countryCodes.length) f.company_country_code = { values: countryCodes };
 
   if (filters.employee_count_min != null || filters.employee_count_max != null) {
-    const sizes = findOverlappingRanges(EMPLOYEE_RANGES, filters.employee_count_min, filters.employee_count_max);
-    if (sizes.length) f.company_size = { values: sizes };
+    if (filters.employee_count_max === 0) {
+      f.company_size = { values: ["1-10"] };
+    } else {
+      const sizes = findOverlappingRanges(EMPLOYEE_RANGES, filters.employee_count_min, filters.employee_count_max);
+      if (sizes.length) f.company_size = { values: sizes };
+    }
   }
 
   if (filters.revenue_min != null || filters.revenue_max != null) {
@@ -162,12 +225,50 @@ function buildProspectPayload(filters) {
     f.linkedin_category = { values: filters.industry.map((i) => i.toLowerCase()) };
   }
 
+  // For prospects, keywords from the query can help narrow company context
+  if (filters.keywords?.length) {
+    const VAGUE_PATTERNS = /^(increasing|growing|fast-growing|high growth|trending|top|best|leading|established|emerging)$/i;
+    const usable = filters.keywords.filter((k) => !VAGUE_PATTERNS.test(k.trim()));
+    if (usable.length) {
+      f.company_website_keywords = { values: usable, operator: "OR" };
+    }
+  }
+
   return { mode: "full", size: MAX_RESULTS, page_size: MAX_RESULTS, page: 1, filters: f };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Section 4: Normalizers — convert raw Explorium records to clean shapes
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Pick the best LinkedIn URL from Explorium data.
+ * Explorium returns an encoded opaque ID in `linkedin` (e.g. "linkedin.com/in/ACoAAA...")
+ * and sometimes a `linkedin_url_array` that contains the real vanity URL as the 2nd entry.
+ * Prefer the vanity URL since the encoded one returns 404 on LinkedIn.
+ */
+function pickBestLinkedInUrl(raw, urlField, arrayField) {
+  // First try the array — find a vanity URL (one that doesn't start with "ACo")
+  const arr = raw[arrayField];
+  if (Array.isArray(arr) && arr.length > 0) {
+    const vanity = arr.find((u) => u && !u.includes("/ACoA"));
+    if (vanity) return ensureHttps(vanity);
+    // fallback to first entry in array
+    return ensureHttps(arr[0]);
+  }
+  // Fallback to the single field
+  const single = raw[urlField];
+  if (single) return ensureHttps(single);
+  return null;
+}
+
+function ensureHttps(url) {
+  if (!url || url === "N/A") return null;
+  const trimmed = String(url).trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("http")) return trimmed;
+  return `https://${trimmed}`;
+}
 
 /** Title-case geographic strings only ("united states" → "United States"). */
 function geoTitleCase(str) {
@@ -186,7 +287,7 @@ function normalizeCompany(raw) {
     country: geoTitleCase(raw.country_name),
     city: geoTitleCase(raw.city_name),
     state: geoTitleCase(raw.region),
-    linkedin_url: raw.linkedin_profile || raw.linkedin_url || "N/A",
+    linkedin_url: ensureHttps(raw.linkedin_profile || raw.linkedin_url || raw.company_linkedin) || "N/A",
     website: raw.website || "N/A",
     founded_year: raw.year_founded || "N/A",
     description: raw.business_description || "N/A",
@@ -208,7 +309,7 @@ function normalizeProspect(raw) {
     phone: raw.phone || "N/A",
     country: geoTitleCase(raw.country_name),
     city: geoTitleCase(raw.city),
-    linkedin_url: raw.linkedin || "N/A",
+    linkedin_url: pickBestLinkedInUrl(raw, "linkedin", "linkedin_url_array") || "N/A",
     department: raw.job_department_main || "N/A",
     seniority: raw.job_level_main || "N/A",
     skills: raw.skills || [],
@@ -270,9 +371,24 @@ function extractInvalidFilters(errorBody) {
 }
 
 /**
- * Search and enrich via Explorium. If a 422 occurs due to an invalid filter,
- * removes the offending filter(s) and retries once — so a single bad
- * linkedin_category from Gemini doesn't kill the entire request.
+ * Progressively relax filters to find results. Returns a list of filter keys
+ * ordered from least important (drop first) to most important (drop last).
+ */
+function getRelaxationOrder(isCompany) {
+  // Drop least essential filters first; keep geography and core identity last.
+  // Keywords/tech are dropped first since they over-constrain website content.
+  // Geography (country_code) is kept as long as possible since wrong-country
+  // results are worse than fewer results.
+  if (isCompany) {
+    return ["company_tech_stack_tech", "website_keywords", "company_revenue", "company_size", "linkedin_category", "country_code"];
+  }
+  return ["company_website_keywords", "company_revenue", "company_size", "linkedin_category", "job_department", "company_country_code", "job_title"];
+}
+
+/**
+ * Search and enrich via Explorium. Handles:
+ * 1. 422 errors: strips invalid filter(s) and retries
+ * 2. Empty results: progressively relaxes filters to broaden the search
  */
 export async function searchAndEnrich(entityType, filters) {
   const apiKey = getApiKey();
@@ -299,6 +415,23 @@ export async function searchAndEnrich(entityType, filters) {
         delete payload.filters[field];
       }
       result = await callExplorium(endpoint, payload, apiKey);
+    }
+  }
+
+  // ── Relaxation: if results are empty, progressively drop filters ──
+  if (result.ok && (!result.data.data || result.data.data.length === 0)) {
+    const relaxOrder = getRelaxationOrder(isCompany);
+    for (const filterKey of relaxOrder) {
+      if (!payload.filters[filterKey]) continue;
+      // Keep at least one filter
+      if (Object.keys(payload.filters).length <= 1) break;
+
+      console.warn(`[EXPLORIUM] No results — relaxing filter: ${filterKey}`);
+      delete payload.filters[filterKey];
+      result = await callExplorium(endpoint, payload, apiKey);
+
+      if (result.ok && result.data.data?.length > 0) break;
+      if (!result.ok) break;
     }
   }
 
