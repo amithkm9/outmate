@@ -1,53 +1,67 @@
-# OutMate - NLP Enrichment Demo
+# OutMate - NLP Database Enrichment
 
-A mini version of Outmate.ai's **NLP Database Enrichment** feature. Users type any natural language prompt, and the system converts it to structured B2B filters using Gemini, fetches enriched data from Explorium APIs, and displays it in a clean table.
+A mini version of Outmate.ai's **NLP Database Enrichment** feature. Users type any natural language prompt, and the system converts it to structured B2B filters using Gemini AI, fetches enriched data from Explorium APIs, and displays up to 3 rich records in a clean table.
+
+---
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      FRONTEND                           │
-│               (React + Vite on Vercel)                  │
-│                                                         │
-│   ┌──────────┐  ┌──────────────┐  ┌───────────────┐    │
-│   │  Prompt   │  │   Sample     │  │   Results     │    │
-│   │  Input    │──│   Prompts    │  │   Table +     │    │
-│   │  Box      │  │   Section    │  │   JSON Modal  │    │
-│   └─────┬────┘  └──────────────┘  └───────┬───────┘    │
-│         │            POST /api/enrich      │            │
-└─────────┼──────────────────────────────────┼────────────┘
-          │                                  │
-          ▼                                  ▲
-┌─────────────────────────────────────────────────────────┐
-│                      BACKEND                            │
-│             (Express.js on Render)                      │
-│                                                         │
-│   ┌──────────┐  ┌──────────────┐  ┌───────────────┐    │
-│   │  Input   │  │   Gemini     │  │  Explorium    │    │
-│   │  Validate│─▶│   NLP Parse  │─▶│  Search &     │    │
-│   │          │  │  → Filters   │  │  Enrich       │    │
-│   └──────────┘  └──────────────┘  └───────────────┘    │
-│                                                         │
-│   Middleware: CORS, Rate Limit (10 req/min/IP)          │
-└─────────────────────────────────────────────────────────┘
-          │                      │
-          ▼                      ▼
-   ┌─────────────┐       ┌──────────────┐
-   │ Google       │       │  Explorium   │
-   │ Gemini API   │       │  REST API    │
-   │ (NLP→JSON)   │       │  (B2B Data)  │
-   └─────────────┘       └──────────────┘
-```
+![Architecture Diagram](docs/architecture.png)
 
-## Tech Stack
+| Layer | Technology | Deployment |
+|-------|-----------|------------|
+| Frontend | React 18, Vite, CSS | Vercel |
+| Backend | Node.js, Express.js | Render |
+| AI Model | Google Gemini 2.5 Flash | Google API |
+| Data Provider | Explorium REST API | Explorium Cloud |
+| Version Control | Git + GitHub | - |
 
-| Layer      | Technology                      |
-|------------|---------------------------------|
-| Frontend   | React 18, Vite, CSS             |
-| Backend    | Node.js, Express.js             |
-| AI Model   | Google Gemini 2.5 Flash Lite    |
-| Data API   | Explorium REST API              |
-| Deployment | Vercel (frontend), Render (backend) |
+**Key architectural decisions:**
+- **Forced JSON schema** on Gemini output — guarantees valid, parseable JSON every time (no regex needed)
+- **Deterministic post-processing** after Gemini — rescues geographic data the LLM misclassifies
+- **Shared constants module** (`geography.js`) — single source of truth for country/region/city lookups, imported by both services
+- **Progressive filter relaxation** — automatically broadens search when Explorium returns empty results
+
+---
+
+## NLP Pipeline — 3-Layer Approach
+
+This is the core AI logic. A single LLM call is unreliable for structured filter extraction, so the system uses three layers to ensure accuracy:
+
+![NLP Pipeline](docs/nlp-pipeline.png)
+
+**Layer 1 — Gemini 2.5 Flash** parses the prompt into structured JSON using a 150-line system instruction covering 60+ industries, geographic mapping, numeric extraction, brand comparisons, and job title expansion.
+
+**Layer 2 — Deterministic Post-Processing** fixes what Gemini gets wrong. `postProcessFilters()` scans the keywords array for misplaced country/region/city names and moves them to the correct fields. `rescueGeographyFromPrompt()` scans the raw prompt as a safety net.
+
+**Layer 3 — Explorium Filter Mapping** converts the cleaned filters into Explorium's API format — ISO country codes, enum range overlaps for employee counts/revenue, and industry term rescue from the technologies field.
+
+---
+
+## Progressive Filter Relaxation
+
+When complex queries return zero results, the system doesn't just fail. It progressively drops the least important filters and retries:
+
+![Filter Relaxation](docs/filter-relaxation.png)
+
+**Relaxation order** (dropped first to last): `tech_stack` → `keywords` → `revenue` → `company_size` → `industry` → `country`
+
+Geography is kept last because wrong-country results are worse than fewer results.
+
+---
+
+## Guardrails
+
+The system includes an LLM-based guardrail to reject off-topic queries before they waste Explorium API credits:
+
+- **Off-topic queries** ("write a poem", "what is 2+2") → `400 IRRELEVANT_PROMPT`
+- **Prompt injection** ("ignore your instructions") → blocked
+- **Gibberish input** → blocked
+- **Valid B2B queries** → processed normally
+
+This is implemented via an `is_relevant` boolean in Gemini's forced JSON schema — the LLM classifies relevance as part of its structured output.
+
+---
 
 ## How to Run Locally
 
@@ -86,21 +100,25 @@ npm run dev
 # App starts at http://localhost:5173
 ```
 
+---
+
 ## Environment Variables
 
 ### Backend (`backend/.env`)
-| Variable           | Description                    | Required |
-|--------------------|--------------------------------|----------|
-| `GEMINI_API_KEY`   | Google Gemini API key          | Yes      |
-| `EXPLORIUM_API_KEY`| Explorium REST API key         | Yes      |
-| `PORT`             | Server port (default: 3001)    | No       |
-| `FRONTEND_URL`     | Allowed CORS origin            | No       |
-| `NODE_ENV`         | `development` or `production`  | No       |
+| Variable | Description | Required |
+|---|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key | Yes |
+| `EXPLORIUM_API_KEY` | Explorium REST API key | Yes |
+| `PORT` | Server port (default: 3001) | No |
+| `FRONTEND_URL` | Allowed CORS origin | No |
+| `NODE_ENV` | `development` or `production` | No |
 
 ### Frontend (`frontend/.env`)
-| Variable       | Description                       | Required |
-|----------------|-----------------------------------|----------|
-| `VITE_API_URL` | Backend base URL                  | No       |
+| Variable | Description | Required |
+|---|---|---|
+| `VITE_API_URL` | Backend base URL | No |
+
+---
 
 ## API Contract
 
@@ -133,17 +151,17 @@ npm run dev
       "description": "Automating Information Security Compliances...",
       "logo": "https://media.licdn.com/...",
       "business_id": "89f3358b...",
-      "raw": { ... }
+      "raw": { }
     }
   ],
   "meta": {
     "entity_type": "company",
     "filters_used": {
-      "industry": ["SaaS"],
+      "industry": ["software development"],
       "employee_count_min": 50,
       "employee_count_max": 500,
       "countries": ["United States"],
-      "keywords": ["fast-growing"]
+      "keywords": ["fast-growing", "Series B"]
     },
     "total_results": 3,
     "duration_ms": 2340
@@ -151,23 +169,21 @@ npm run dev
 }
 ```
 
-**Error Response:**
+**Error Responses:**
 ```json
-{
-  "error": true,
-  "message": "Failed to parse prompt with AI: ...",
-  "error_code": "GEMINI_ERROR"
-}
+{ "error": true, "message": "...", "error_code": "INVALID_PROMPT" }
+{ "error": true, "message": "...", "error_code": "IRRELEVANT_PROMPT" }
+{ "error": true, "message": "...", "error_code": "GEMINI_ERROR" }
+{ "error": true, "message": "...", "error_code": "EXPLORIUM_ERROR" }
 ```
 
 ### `GET /api/health`
 
-**Response:**
 ```json
-{
-  "status": "ok"
-}
+{ "status": "ok" }
 ```
+
+---
 
 ## Sample Prompts
 
@@ -177,42 +193,67 @@ npm run dev
 4. "3 marketing leaders at e-commerce brands in North America doing more than $50M in revenue."
 5. "Cybersecurity firms with increasing web traffic and at least 200 employees."
 
+---
+
+## Challenges & Solutions
+
+![Challenges and Solutions](docs/challenges.png)
+
+---
+
 ## Project Structure
 
 ```
 outmate/
 ├── backend/
 │   ├── src/
-│   │   ├── index.js              # Express server entry
+│   │   ├── index.js                # Express server entry
 │   │   ├── routes/
-│   │   │   ├── enrich.js         # POST /api/enrich handler
-│   │   │   └── health.js         # GET /api/health handler
+│   │   │   ├── enrich.js           # POST /api/enrich handler
+│   │   │   └── health.js          # GET /api/health handler
 │   │   ├── services/
-│   │   │   ├── gemini.js         # Gemini prompt→filters parsing
-│   │   │   └── explorium.js      # Explorium API search & normalize
+│   │   │   ├── gemini.js           # Gemini NLP parsing (system prompt + post-processing)
+│   │   │   └── explorium.js       # Explorium API mapping, search & normalization
 │   │   ├── middleware/
-│   │   │   └── rateLimiter.js    # 10 req/min/IP rate limit
+│   │   │   └── rateLimiter.js     # 10 req/min/IP rate limit
 │   │   └── utils/
-│   │       └── logger.js         # Structured request logging
+│   │       ├── geography.js       # Shared geographic constants (single source of truth)
+│   │       └── logger.js          # Structured request logging
 │   ├── .env.example
 │   └── package.json
 ├── frontend/
 │   ├── src/
-│   │   ├── App.jsx               # Main app with state management
+│   │   ├── App.jsx                 # Main app with state management
 │   │   ├── App.css
-│   │   ├── index.css             # Global styles & theme
-│   │   ├── main.jsx              # React entry point
+│   │   ├── index.css              # Global styles & CSS variables
+│   │   ├── main.jsx               # React entry point
 │   │   └── components/
-│   │       ├── Header.jsx        # App header
-│   │       ├── PromptInput.jsx   # Textarea input
-│   │       ├── SamplePrompts.jsx # Clickable example prompts
-│   │       ├── FilterBadges.jsx  # Shows parsed filters
-│   │       ├── ResultsTable.jsx  # Data table (desktop + mobile)
-│   │       └── JsonModal.jsx     # Raw JSON viewer modal
+│   │       ├── Header.jsx         # App header
+│   │       ├── PromptInput.jsx    # Textarea input
+│   │       ├── SamplePrompts.jsx  # Clickable example prompts
+│   │       ├── FilterBadges.jsx   # Shows parsed filters as badges
+│   │       ├── ResultsTable.jsx   # Data table (desktop + mobile cards)
+│   │       └── JsonModal.jsx      # Raw JSON viewer modal
 │   ├── index.html
 │   ├── vite.config.js
 │   ├── .env.example
 │   └── package.json
+├── docs/                           # Architecture & design diagrams
+│   ├── architecture.png
+│   ├── nlp-pipeline.png
+│   ├── filter-relaxation.png
+│   └── challenges.png
 ├── .gitignore
 └── README.md
 ```
+
+---
+
+## Security
+
+- All secrets (`GEMINI_API_KEY`, `EXPLORIUM_API_KEY`) in environment variables, never hardcoded
+- Rate limiting: 10 requests per IP per minute via `express-rate-limit`
+- CORS: locked to frontend domain only in production
+- Input validation: prompt length 1-2000 characters
+- LLM guardrails: off-topic and prompt injection queries rejected before Explorium call
+- Structured error responses with error codes (no stack traces leaked to client)
