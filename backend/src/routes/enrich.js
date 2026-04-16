@@ -41,6 +41,14 @@ router.post("/", async (req, res, next) => {
     try {
       parsedFilters = await parsePromptToFilters(trimmed);
     } catch (err) {
+      // Off-topic / irrelevant prompt → 400 (not a server error)
+      if (err.code === "IRRELEVANT_PROMPT") {
+        return res.status(400).json({
+          error: true,
+          message: err.message,
+          error_code: "IRRELEVANT_PROMPT",
+        });
+      }
       logError("gemini", err);
       return res.status(502).json({
         error: true,
