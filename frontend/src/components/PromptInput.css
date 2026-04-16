@@ -21,17 +21,20 @@
   font-size: 0.95rem;
   resize: vertical;
   min-height: 100px;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s, box-shadow 0.2s;
   line-height: 1.5;
+  box-shadow: var(--shadow-sm);
 }
 
 .prompt-textarea:focus {
   outline: none;
   border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
 }
 
 .prompt-textarea:disabled {
   opacity: 0.6;
+  background: var(--bg);
 }
 
 .prompt-textarea::placeholder {

@@ -23,19 +23,20 @@
   border-radius: 20px;
   font-size: 0.75rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
   text-align: left;
   font-family: inherit;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  box-shadow: var(--shadow-sm);
 }
 
 .sample-chip:hover {
   border-color: var(--primary);
-  color: var(--text);
-  background: rgba(108, 92, 231, 0.1);
+  color: var(--primary);
+  background: var(--primary-light);
 }
 
 @media (max-width: 600px) {

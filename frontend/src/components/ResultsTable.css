@@ -6,6 +6,7 @@
   font-size: 1.1rem;
   margin-bottom: 1rem;
   font-weight: 600;
+  color: var(--text);
 }
 
 /* Desktop table */
@@ -13,6 +14,8 @@
   overflow-x: auto;
   border-radius: 10px;
   border: 1px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-sm);
 }
 
 .results-table {
@@ -22,11 +25,11 @@
 }
 
 .results-table th {
-  background: var(--bg-card);
+  background: var(--bg);
   padding: 0.75rem 0.75rem;
   text-align: left;
   font-weight: 600;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   color: var(--text-muted);
@@ -41,6 +44,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text);
 }
 
 .results-table tr:last-child td {
@@ -48,7 +52,7 @@
 }
 
 .results-table tr:hover td {
-  background: rgba(108, 92, 231, 0.05);
+  background: var(--primary-light);
 }
 
 .row-num {
@@ -58,22 +62,23 @@
 }
 
 .na {
-  color: var(--text-muted);
+  color: #94a3b8;
   font-style: italic;
   font-size: 0.8rem;
 }
 
 .link {
-  color: var(--accent);
+  color: var(--primary);
   text-decoration: none;
   font-weight: 500;
 }
 .link:hover {
   text-decoration: underline;
+  color: var(--primary-hover);
 }
 
 .json-btn {
-  background: var(--bg-input);
+  background: var(--bg);
   border: 1px solid var(--border);
   color: var(--text-muted);
   padding: 0.3rem 0.6rem;
@@ -81,12 +86,13 @@
   font-size: 0.75rem;
   cursor: pointer;
   font-family: inherit;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
   white-space: nowrap;
 }
 .json-btn:hover {
   border-color: var(--primary);
-  color: var(--text);
+  color: var(--primary);
+  background: var(--primary-light);
 }
 
 /* Mobile cards - hidden by default */
@@ -108,6 +114,7 @@
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 1rem;
+    box-shadow: var(--shadow-sm);
   }
   .card-header {
     display: flex;
@@ -122,6 +129,7 @@
   }
   .card-header strong {
     flex: 1;
+    color: var(--text);
   }
   .card-fields {
     display: grid;
@@ -142,5 +150,6 @@
   }
   .card-value {
     font-size: 0.85rem;
+    color: var(--text);
   }
 }

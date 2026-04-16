@@ -23,24 +23,26 @@
 }
 
 .btn {
-  padding: 0.75rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   border-radius: 8px;
   border: none;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
 
 .btn-primary {
   background: var(--primary);
   color: white;
+  box-shadow: var(--shadow-sm);
 }
 .btn-primary:hover:not(:disabled) {
   background: var(--primary-hover);
+  box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 .btn-primary:disabled {
@@ -49,12 +51,13 @@
 }
 
 .btn-secondary {
-  background: var(--bg-input);
+  background: var(--bg-card);
   color: var(--text);
   border: 1px solid var(--border);
 }
 .btn-secondary:hover {
-  background: var(--border);
+  background: var(--bg);
+  border-color: #cbd5e1;
 }
 
 .spinner {
@@ -79,13 +82,14 @@
 }
 
 .error-banner {
-  background: rgba(231, 76, 60, 0.15);
-  border: 1px solid var(--error);
-  color: #ff6b6b;
+  background: var(--error-bg);
+  border: 1px solid #fecaca;
+  color: var(--error);
   padding: 1rem 1.25rem;
   border-radius: 8px;
   margin-bottom: 1.5rem;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .empty-state {
