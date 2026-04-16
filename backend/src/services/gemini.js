@@ -1,4 +1,8 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
+import {
+  COUNTRY_NAMES, REGION_NAMES, REGION_CANONICAL,
+  CITY_COUNTRY_MAP, US_STATES,
+} from "../utils/geography.js";
 
 // ── System instruction: tells Gemini HOW to behave ─────────────────────────
 const SYSTEM_INSTRUCTION = `You are a B2B data filter extraction engine for the Explorium API.
@@ -190,68 +194,7 @@ function getClient() {
 // ── Post-processing: fix what Gemini misclassifies ─────────────────────────
 // Gemini flash often puts country/city/region names in keywords instead of
 // the correct fields. This deterministic pass rescues them.
-
-const COUNTRY_NAMES = {
-  "us": "United States", "usa": "United States", "united states": "United States", "america": "United States",
-  "uk": "United Kingdom", "united kingdom": "United Kingdom", "england": "United Kingdom", "britain": "United Kingdom",
-  "canada": "Canada", "germany": "Germany", "france": "France",
-  "india": "India", "australia": "Australia", "japan": "Japan",
-  "china": "China", "brazil": "Brazil", "mexico": "Mexico",
-  "spain": "Spain", "italy": "Italy", "netherlands": "Netherlands",
-  "sweden": "Sweden", "switzerland": "Switzerland", "singapore": "Singapore",
-  "israel": "Israel", "south korea": "South Korea", "ireland": "Ireland",
-  "norway": "Norway", "denmark": "Denmark", "finland": "Finland",
-  "portugal": "Portugal", "belgium": "Belgium", "austria": "Austria",
-  "poland": "Poland", "new zealand": "New Zealand", "south africa": "South Africa",
-  "uae": "United Arab Emirates", "united arab emirates": "United Arab Emirates",
-  "thailand": "Thailand", "vietnam": "Vietnam", "indonesia": "Indonesia",
-  "philippines": "Philippines", "malaysia": "Malaysia",
-  "argentina": "Argentina", "colombia": "Colombia", "chile": "Chile", "peru": "Peru",
-  "czech republic": "Czech Republic", "romania": "Romania", "hungary": "Hungary",
-  "greece": "Greece", "turkey": "Turkey", "ukraine": "Ukraine",
-  "saudi arabia": "Saudi Arabia", "qatar": "Qatar", "egypt": "Egypt",
-  "nigeria": "Nigeria", "kenya": "Kenya",
-  "taiwan": "Taiwan", "hong kong": "Hong Kong", "pakistan": "Pakistan",
-};
-
-const REGION_NAMES = new Set([
-  "europe", "european", "north america", "asia", "asia pacific", "apac",
-  "southeast asia", "south east asia", "sea", "middle east", "mena",
-  "latin america", "latam", "nordics", "nordic", "africa", "south asia",
-]);
-
-// Cities → their country name (for rescue from keywords)
-const CITY_COUNTRY_MAP = {
-  "san francisco": "United States", "new york": "United States", "los angeles": "United States",
-  "chicago": "United States", "boston": "United States", "seattle": "United States",
-  "austin": "United States", "denver": "United States", "miami": "United States",
-  "atlanta": "United States", "dallas": "United States", "houston": "United States",
-  "silicon valley": "United States", "bay area": "United States", "palo alto": "United States",
-  "london": "United Kingdom", "manchester": "United Kingdom", "edinburgh": "United Kingdom",
-  "berlin": "Germany", "munich": "Germany", "hamburg": "Germany", "frankfurt": "Germany",
-  "paris": "France", "lyon": "France",
-  "toronto": "Canada", "vancouver": "Canada", "montreal": "Canada",
-  "bangalore": "India", "bengaluru": "India", "mumbai": "India", "delhi": "India",
-  "new delhi": "India", "hyderabad": "India", "pune": "India", "chennai": "India",
-  "tokyo": "Japan", "osaka": "Japan",
-  "sydney": "Australia", "melbourne": "Australia",
-  "amsterdam": "Netherlands", "stockholm": "Sweden", "zurich": "Switzerland",
-  "dublin": "Ireland", "tel aviv": "Israel",
-  "dubai": "United Arab Emirates", "abu dhabi": "United Arab Emirates",
-  "são paulo": "Brazil", "sao paulo": "Brazil",
-  "lagos": "Nigeria", "nairobi": "Kenya", "cape town": "South Africa",
-  "jakarta": "Indonesia", "bangkok": "Thailand", "ho chi minh": "Vietnam",
-  "kuala lumpur": "Malaysia", "manila": "Philippines",
-};
-
-// US states → country
-const US_STATES = new Set([
-  "california", "texas", "new york state", "florida", "illinois",
-  "washington", "massachusetts", "colorado", "georgia", "north carolina",
-  "virginia", "pennsylvania", "ohio", "michigan", "arizona", "oregon",
-  "minnesota", "maryland", "connecticut", "utah", "tennessee", "indiana",
-  "missouri", "wisconsin", "nevada",
-]);
+// Geographic lookup tables are imported from utils/geography.js (single source of truth).
 
 /**
  * Post-process Gemini output to rescue misplaced countries, regions, and
@@ -282,18 +225,7 @@ function postProcessFilters(parsed) {
 
     // Check if it's a region name
     if (REGION_NAMES.has(kwLower)) {
-      // Normalize region names
-      const regionMap = {
-        "european": "Europe", "europe": "Europe",
-        "north america": "North America",
-        "asia": "Asia", "asia pacific": "Asia Pacific", "apac": "Asia Pacific",
-        "southeast asia": "Southeast Asia", "south east asia": "Southeast Asia", "sea": "Southeast Asia",
-        "middle east": "Middle East", "mena": "Middle East",
-        "latin america": "Latin America", "latam": "Latin America",
-        "nordics": "Nordics", "nordic": "Nordics",
-        "africa": "Africa", "south asia": "South Asia",
-      };
-      const canonical = regionMap[kwLower] || kw;
+      const canonical = REGION_CANONICAL[kwLower] || kw;
       if (!regionsSet.has(canonical.toLowerCase())) {
         filters.regions.push(canonical);
         regionsSet.add(canonical.toLowerCase());
@@ -364,18 +296,7 @@ function rescueGeographyFromPrompt(parsed, prompt) {
     if (region.length < 4) continue;
     const regex = new RegExp(`\\b${region.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "i");
     if (regex.test(promptLower) && !regionsSet.has(region)) {
-      const regionMap = {
-        "european": "Europe", "europe": "Europe",
-        "north america": "North America",
-        "southeast asia": "Southeast Asia", "south east asia": "Southeast Asia",
-        "middle east": "Middle East", "mena": "Middle East",
-        "latin america": "Latin America", "latam": "Latin America",
-        "nordics": "Nordics", "nordic": "Nordics",
-        "africa": "Africa", "south asia": "South Asia",
-        "asia pacific": "Asia Pacific", "apac": "Asia Pacific",
-        "asia": "Asia",
-      };
-      const canonical = regionMap[region] || region;
+      const canonical = REGION_CANONICAL[region] || region;
       if (!regionsSet.has(canonical.toLowerCase())) {
         filters.regions.push(canonical);
         regionsSet.add(canonical.toLowerCase());

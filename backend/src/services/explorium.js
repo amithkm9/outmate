@@ -1,58 +1,12 @@
 import { logError } from "../utils/logger.js";
+import { resolveCountryCodes } from "../utils/geography.js";
 
 const EXPLORIUM_BASE_URL = "https://api.explorium.ai/v1";
 const MAX_RESULTS = 3;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Section 1: Constants — Explorium enum values and geographic mappings
+// Section 1: Constants — Explorium-specific enum values
 // ═══════════════════════════════════════════════════════════════════════════
-
-const COUNTRY_CODE_MAP = {
-  "united states": "us", "usa": "us", "us": "us", "america": "us",
-  "united kingdom": "gb", "uk": "gb", "england": "gb", "britain": "gb", "great britain": "gb",
-  "canada": "ca", "germany": "de", "france": "fr",
-  "india": "in", "australia": "au", "japan": "jp",
-  "china": "cn", "brazil": "br", "mexico": "mx",
-  "spain": "es", "italy": "it", "netherlands": "nl", "holland": "nl",
-  "sweden": "se", "switzerland": "ch", "singapore": "sg",
-  "israel": "il", "south korea": "kr", "korea": "kr", "ireland": "ie",
-  "norway": "no", "denmark": "dk", "finland": "fi",
-  "portugal": "pt", "belgium": "be", "austria": "at",
-  "poland": "pl", "new zealand": "nz", "south africa": "za",
-  "uae": "ae", "united arab emirates": "ae",
-  // Southeast Asia
-  "thailand": "th", "vietnam": "vn", "indonesia": "id",
-  "philippines": "ph", "malaysia": "my", "myanmar": "mm", "cambodia": "kh",
-  // Latin America
-  "argentina": "ar", "colombia": "co", "chile": "cl", "peru": "pe",
-  "venezuela": "ve", "ecuador": "ec", "uruguay": "uy",
-  // More Europe
-  "czech republic": "cz", "czechia": "cz", "romania": "ro", "hungary": "hu",
-  "greece": "gr", "croatia": "hr", "ukraine": "ua", "turkey": "tr",
-  "luxembourg": "lu", "estonia": "ee", "latvia": "lv", "lithuania": "lt",
-  // Middle East & Africa
-  "saudi arabia": "sa", "qatar": "qa", "bahrain": "bh", "kuwait": "kw",
-  "oman": "om", "egypt": "eg", "nigeria": "ng", "kenya": "ke", "ghana": "gh",
-  // Asia
-  "taiwan": "tw", "hong kong": "hk", "bangladesh": "bd", "pakistan": "pk",
-  "sri lanka": "lk",
-};
-
-const REGION_COUNTRY_CODES = {
-  "europe": ["gb", "de", "fr", "es", "it", "nl", "se", "ch", "ie", "no", "dk", "fi", "pt", "be", "at", "pl", "cz", "ro", "hu", "gr", "hr", "lu", "ee", "lv", "lt"],
-  "north america": ["us", "ca", "mx"],
-  "asia": ["in", "jp", "cn", "sg", "kr", "tw", "hk", "bd", "pk", "lk"],
-  "asia pacific": ["in", "jp", "cn", "sg", "kr", "au", "nz", "tw", "hk", "th", "vn", "id", "ph", "my"],
-  "southeast asia": ["th", "vn", "id", "ph", "my", "sg", "mm", "kh"],
-  "sea": ["th", "vn", "id", "ph", "my", "sg", "mm", "kh"],
-  "middle east": ["ae", "il", "sa", "qa", "bh", "kw", "om"],
-  "mena": ["ae", "il", "sa", "qa", "bh", "kw", "om", "eg"],
-  "latin america": ["br", "mx", "ar", "co", "cl", "pe", "ve", "ec", "uy"],
-  "latam": ["br", "mx", "ar", "co", "cl", "pe", "ve", "ec", "uy"],
-  "nordics": ["se", "no", "dk", "fi"],
-  "africa": ["za", "ng", "ke", "gh", "eg"],
-  "south asia": ["in", "bd", "pk", "lk"],
-};
 
 // Explorium's valid company_size enum values and their numeric boundaries
 const EMPLOYEE_RANGES = [
@@ -84,6 +38,18 @@ const REVENUE_RANGES = [
   { label: "10T+",      min: 10_000_000_000_000, max: Infinity },
 ];
 
+// Industry buzzwords that Gemini may misplace into the technologies field
+const INDUSTRY_TERMS = new Set([
+  "cybersecurity", "fintech", "saas", "ai", "machine learning",
+  "artificial intelligence", "blockchain", "iot", "cloud", "devops",
+  "data science", "edtech", "cleantech", "climate tech", "proptech",
+  "insurtech", "legaltech", "hr tech", "food tech", "fashion tech",
+  "e-commerce", "ecommerce", "deep learning", "nlp", "computer vision",
+]);
+
+// Vague/qualitative terms that don't match actual website content
+const VAGUE_PATTERN = /^(increasing|growing|fast-growing|high growth|trending|top|best|leading|established|emerging)$/i;
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Section 2: Filter Mappers — convert Gemini output to Explorium format
 // ═══════════════════════════════════════════════════════════════════════════
@@ -95,20 +61,6 @@ function findOverlappingRanges(ranges, requestedMin, requestedMax) {
   return ranges
     .filter((r) => r.max >= min && r.min <= max)
     .map((r) => r.label);
-}
-
-/** Resolve country names and region names into ISO Alpha-2 codes. */
-function resolveCountryCodes(countries, regions) {
-  const codes = new Set();
-  for (const c of countries || []) {
-    const code = COUNTRY_CODE_MAP[c.toLowerCase()];
-    if (code) codes.add(code);
-  }
-  for (const r of regions || []) {
-    const regionCodes = REGION_COUNTRY_CODES[r.toLowerCase()];
-    if (regionCodes) regionCodes.forEach((c) => codes.add(c));
-  }
-  return [...codes];
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -141,13 +93,6 @@ function buildCompanyPayload(filters) {
   }
 
   // Separate real tech stack items from industry buzzwords that Gemini misclassifies
-  const INDUSTRY_TERMS = new Set([
-    "cybersecurity", "fintech", "saas", "ai", "machine learning",
-    "artificial intelligence", "blockchain", "iot", "cloud", "devops",
-    "data science", "edtech", "cleantech", "climate tech", "proptech",
-    "insurtech", "legaltech", "hr tech", "food tech", "fashion tech",
-    "e-commerce", "ecommerce", "deep learning", "nlp", "computer vision",
-  ]);
   const misplacedKeywords = [];
   if (filters.technologies?.length) {
     const realTech = [];
@@ -184,8 +129,7 @@ function buildCompanyPayload(filters) {
   }
 
   // Filter out vague/qualitative terms that don't match website content
-  const VAGUE_PATTERNS = /^(increasing|growing|fast-growing|high growth|trending|top|best|leading|established|emerging)$/i;
-  const usableKeywords = allKeywords.filter((k) => !VAGUE_PATTERNS.test(k.trim()));
+  const usableKeywords = allKeywords.filter((k) => !VAGUE_PATTERN.test(k.trim()));
   if (usableKeywords.length) {
     f.website_keywords = { values: usableKeywords, operator: "OR" };
   }
@@ -227,8 +171,7 @@ function buildProspectPayload(filters) {
 
   // For prospects, keywords from the query can help narrow company context
   if (filters.keywords?.length) {
-    const VAGUE_PATTERNS = /^(increasing|growing|fast-growing|high growth|trending|top|best|leading|established|emerging)$/i;
-    const usable = filters.keywords.filter((k) => !VAGUE_PATTERNS.test(k.trim()));
+    const usable = filters.keywords.filter((k) => !VAGUE_PATTERN.test(k.trim()));
     if (usable.length) {
       f.company_website_keywords = { values: usable, operator: "OR" };
     }
